@@ -10,8 +10,8 @@ import boto3
 import lzma
 import requests
 
-# Turn off requests logging
 logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
 
