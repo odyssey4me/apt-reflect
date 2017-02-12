@@ -6,6 +6,7 @@ from io import BytesIO
 import re
 import sys
 
+import boto3
 import lzma
 import requests
 
@@ -137,7 +138,6 @@ def verify():
     if not HAS_GNUPG:
         LOG.warning('The python-gnupg library is not available')
         # TODO: ALL THE THINGS
-        #sys.exit(1)
 
     debian_signing_key = 'https://ftp-master.debian.org/keys/archive-key-8.asc'
     debian_signing_security_key = 'https://ftp-master.debian.org/keys/archive-key-8-security.asc'
@@ -163,6 +163,16 @@ def decompress(name, data):
 
 
 def main():
+    s3 = boto3.resource(
+        's3',
+        region_name='default',
+        endpoint_url='http://10.10.1.1:7480',
+    )
+
+    bucket = s3.Bucket('testing')
+    bucket.create()
+    bucket.Acl().put(ACL='public-read')
+
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
@@ -180,11 +190,14 @@ def main():
                 continue
             path = min(keys, key=(lambda key: files[key]['size']))
             raw_data = fetch('/'.join([base, 'dists', codename, path]))
-            # Verify hashes and size
+            # TODO: Verify hashes and size
             data = decompress(path, raw_data)
-            # Verify hashes and size for uncompressed data
+            # TODO: Verify hashes and size for uncompressed data
             packages = PackagesFile(data.decode("utf-8"))
-            ### Do something with parsed info.
+            for package in packages.packages:
+                obj_data = fetch('/'.join([base, package]))
+                obj = bucket.put_object(Key=package, Body=obj_data)
+                obj.Acl().put(ACL='public-read')
 
 
 if __name__ == '__main__':
