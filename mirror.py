@@ -10,6 +10,27 @@ import boto3
 import lzma
 import requests
 
+# Start hack, look away
+# TODO: Remove when resolved https://github.com/boto/botocore/issues/1151
+from botocore.auth import SigV4Auth
+from botocore.compat import urlsplit
+def canonical_request(self, request):
+    cr = [request.method.upper()]
+    path = urlsplit(request.url).path
+    cr.append(path)
+    cr.append(self.canonical_query_string(request))
+    headers_to_sign = self.headers_to_sign(request)
+    cr.append(self.canonical_headers(headers_to_sign) + '\n')
+    cr.append(self.signed_headers(headers_to_sign))
+    if 'X-Amz-Content-SHA256' in request.headers:
+        body_checksum = request.headers['X-Amz-Content-SHA256']
+    else:
+        body_checksum = self.payload(request)
+    cr.append(body_checksum)
+    return '\n'.join(cr)
+SigV4Auth.canonical_request = canonical_request
+# End hack
+
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
@@ -168,10 +189,8 @@ def main():
         region_name='default',
         endpoint_url='http://10.10.1.1:7480',
     )
-
     bucket = s3.Bucket('testing')
-    bucket.create()
-    bucket.Acl().put(ACL='public-read')
+    bucket.create(ACL='public-read')
 
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
@@ -196,8 +215,7 @@ def main():
             packages = PackagesFile(data.decode("utf-8"))
             for package in packages.packages:
                 obj_data = fetch('/'.join([base, package]))
-                obj = bucket.put_object(Key=package, Body=obj_data)
-                obj.Acl().put(ACL='public-read')
+                obj = bucket.put_object(Key=package, Body=obj_data, ACL='public-read')
 
 
 if __name__ == '__main__':
