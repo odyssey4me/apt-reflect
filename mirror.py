@@ -41,26 +41,24 @@ DATE_FMT = '%a, %d %b %Y %H:%M:%S %Z'
 
 class PackagesFile:
     def __init__(self, data):
-        self.word_opt = set([
+        self.packages = dict()
+        self._parse(data)
+
+    def _parse(self, data):
+        def save(info):
+            filename = info['Filename']
+            info.pop('Filename')
+            self.packages[filename] = info
+
+        word_opt = set([
             'Filename',
             'MD5sum',
             'SHA1',
             'SHA256',
         ])
-        self.int_opt = set([
+        int_opt = set([
             'Size',
         ])
-        self.packages = self._parse(data)
-
-    def _parse(self, data):
-        def save(packages, info):
-            if 'Filename' not in info:
-                print(info)
-            filename = info['Filename']
-            info.pop('Filename')
-            packages[filename] = info
-
-        packages = dict()
         info = dict()
         lines = data.split('\n')
         while True:
@@ -68,24 +66,49 @@ class PackagesFile:
                 line = lines.pop()
             except IndexError:
                 if info:
-                    save(packages, info)
+                    save(info)
                 break
             if not line.strip():
                 if info:
-                    save(packages, info)
+                    save(info)
                 info = dict()
-            split = line.split(':')
-            if split[0] in self.word_opt:
-                info[split[0]] = split[1].strip()
-            elif split[0] in self.int_opt:
-                info[split[0]] = int(split[1].strip())
-        return packages
+
+            split = line.split(':', 1)
+            opt = split[0].strip()
+            if len(split) > 1:
+                value = split[1].strip()
+
+            if opt in word_opt:
+                info[opt] = value
+            elif opt in int_opt:
+                info[opt] = int(value)
 
 
 class ReleaseFile:
     def __init__(self, data, url, codename):
         self.url = url
         self.codename = codename
+        self.release = dict()
+        self.files = dict()
+        self.components = dict()
+        self._parse(data)
+
+    def get_packages_manifest(self, component, arch):
+        manifest = '/'.join([component, arch, 'Packages'])
+        keys = [x for x in self.files if manifest in x]
+        if not keys:
+            LOG.error('Architecture "{}" not found'.format(arch))
+            raise
+        path = min(keys, key=(lambda key: self.files[key]['size']))
+        raw_data = fetch('/'.join([self.url, 'dists', self.codename, path]))
+        verify_data(self.files[path], raw_data)
+        data = decompress(path, raw_data)
+        verify_data(self.files['.'.join(path.split('.')[:-1])], data)
+        if component not in self.components:
+            self.components[component] = dict()
+        self.components[component][arch] = PackagesFile(data.decode("utf-8"))
+
+    def _parse(self, data):
         # NOTE: Non-implemented
         #   No-Support-for-Architecture-all
         #   Acquire-By-Hash
@@ -93,53 +116,49 @@ class ReleaseFile:
 
         # NOTE: Validate and/or block on Valid-Until field
 
-        self.date_opt = set([
+        date_opt = set([
             'Date',
             'Valid-Until',
         ])
-        self.list_opt = set([
+        list_opt = set([
             'Architectures',
             'Components',
         ])
-        self.multiline_opt = set([
+        multiline_opt = set([
             'MD5Sum',
             'SHA1',
             'SHA256',
         ])
-        self.release = self._parse(data)
 
-    def _parse(self, data):
-        release = dict()
         for line in data.split('\n'):
             if not re.match(r'\s', line):
-                split = line.split(':')
-                if split[0] in self.list_opt:
-                    release[split[0]] = [x.strip() for x in split[1].split()]
-                elif split[0] in self.multiline_opt:
-                    self.mode = split[0]
-                elif split[0] in self.date_opt:
-                    release[split[0]] = datetime.strptime(
-                        ':'.join(split[1:]).strip(), DATE_FMT)
+                split = line.split(':', 1)
+                opt = split[0].strip()
+                value = split[1].strip() if len(split) > 1 else None
+
+                if opt in list_opt:
+                    self.release[opt] = [x for x in value.split()]
+                elif opt in multiline_opt:
+                    section = opt
+                elif opt in date_opt:
+                    self.release[opt] = datetime.strptime(value, DATE_FMT)
             else:
-                if not self.mode:
+                if not section:
                     LOG.error("White space found before key, ignoring line")
                     return
-                if self.mode not in release:
-                    release[self.mode] = list()
+                if section not in self.release:
+                    self.release[section] = list()
                 checksum, size, path = line.split()
                 size = int(size)
 
-                release[self.mode].append((checksum, size, path))
+                self.release[section].append((checksum, size, path))
 
-                if 'files' not in release:
-                    release['files'] = dict()
-                if path in release['files']:
-                    if size != release['files'][path]['size']:
+                if path in self.files:
+                    if size != self.files[path]['size']:
                         LOG.error('size mismatch for file: {}'.format(path))
                 else:
-                    release['files'][path] = {'size': size}
-                release['files'][path][self.mode] = checksum
-        return release
+                    self.files[path] = {'size': size}
+                self.files[path][section] = checksum
 
 
 def fetch(url):
@@ -200,20 +219,6 @@ def verify_data(info, data):
                 raise
 
 
-def get_packages_manifest(release, component, arch):
-    files = release.release['files']
-    manifest = '/'.join([component, arch, 'Packages'])
-    keys = [x for x in files if manifest in x]
-    if not keys:
-        LOG.error('Architecture "{}" not found'.format(arch))
-        raise
-    path = min(keys, key=(lambda key: files[key]['size']))
-    raw_data = fetch('/'.join([release.url, 'dists', release.codename, path]))
-    verify_data(files[path], raw_data)
-    data = decompress(path, raw_data)
-    verify_data(files['.'.join(path.split('.')[:-1])], data)
-    return PackagesFile(data.decode("utf-8"))
-
 
 def download_package(release, filename, info):
     data = fetch('/'.join([release.url, filename]))
@@ -247,8 +252,8 @@ def main():
             LOG.error('Component "{}" not found'.format(component))
             continue
         for arch in ['binary-amd64', 'binary-i386']:
-            packages = get_packages_manifest(release, component, arch)
-            for package, info in packages.packages.items():
+            release.get_packages_manifest(component, arch)
+            for package, info in release.components[component][arch].packages.items():
                 data = download_package(release, package, info)
                 upload_package(bucket, package, data, info)
 
