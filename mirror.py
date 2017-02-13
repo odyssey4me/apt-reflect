@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import binascii
+import base64
 from datetime import datetime
+import hashlib
 import logging
 from io import BytesIO
 import re
@@ -33,6 +36,7 @@ SigV4Auth.canonical_request = canonical_request
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
 
@@ -183,6 +187,26 @@ def decompress(name, data):
     return data
 
 
+def verify_data(info, data):
+    for k, v in info.items():
+        if k == 'Size' or k == 'size':
+            if len(data) != v:
+                LOG.error('Filesize mismatch')
+                raise
+        elif k == 'MD5Sum' or k == 'MD5sum':
+            if hashlib.md5(data).hexdigest() != v:
+                LOG.error('MD5 mismatch')
+                raise
+        elif k == 'SHA1':
+            if hashlib.sha1(data).hexdigest() != v:
+                LOG.error('SHA1 mismatch')
+                raise
+        elif k == 'SHA256':
+            if hashlib.sha256(data).hexdigest() != v:
+                LOG.error('SHA256 mismatch')
+                raise
+
+
 def main():
     s3 = boto3.resource(
         's3',
@@ -209,13 +233,21 @@ def main():
                 continue
             path = min(keys, key=(lambda key: files[key]['size']))
             raw_data = fetch('/'.join([base, 'dists', codename, path]))
-            # TODO: Verify hashes and size
+            verify_data(files[path], raw_data)
             data = decompress(path, raw_data)
-            # TODO: Verify hashes and size for uncompressed data
+            verify_data(files['.'.join(path.split('.')[:-1])], data)
             packages = PackagesFile(data.decode("utf-8"))
-            for package in packages.packages:
+            for package, info in packages.packages.items():
                 obj_data = fetch('/'.join([base, package]))
-                obj = bucket.put_object(Key=package, Body=obj_data, ACL='public-read')
+                verify_data(info, obj_data)
+                LOG.debug('Pushing {}'.format(package))
+                obj = bucket.put_object(
+                    ACL='public-read',
+                    ContentLength=info['Size'],
+                    ContentMD5=base64.b64encode(binascii.a2b_hex(info['MD5sum'])).decode('utf-8'),
+                    Body=obj_data,
+                    Key=package,
+                )
 
 
 if __name__ == '__main__':
