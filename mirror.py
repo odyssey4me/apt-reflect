@@ -31,27 +31,6 @@ except ImportError:
     HAS_GNUPG = False
 
 
-# Start hack, look away
-# TODO: Remove when resolved https://github.com/boto/botocore/issues/1151
-from botocore.auth import SigV4Auth
-from botocore.compat import urlsplit
-def canonical_request(self, request):
-    cr = [request.method.upper()]
-    path = urlsplit(request.url).path
-    cr.append(path)
-    cr.append(self.canonical_query_string(request))
-    headers_to_sign = self.headers_to_sign(request)
-    cr.append(self.canonical_headers(headers_to_sign) + '\n')
-    cr.append(self.signed_headers(headers_to_sign))
-    if 'X-Amz-Content-SHA256' in request.headers:
-        body_checksum = request.headers['X-Amz-Content-SHA256']
-    else:
-        body_checksum = self.payload(request)
-    cr.append(body_checksum)
-    return '\n'.join(cr)
-SigV4Auth.canonical_request = canonical_request
-# End hack
-
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -255,11 +234,7 @@ def upload_package(bucket, key, data, info):
 
 
 def main():
-    s3 = boto3.resource(
-        's3',
-        region_name='default',
-        endpoint_url='http://10.10.1.1:7480',
-    )
+    s3 = boto3.resource('s3', endpoint_url='http://10.10.1.1:7480')
     bucket = s3.Bucket('testing')
     bucket.create(ACL='public-read')
 
@@ -276,7 +251,6 @@ def main():
             for package, info in packages.packages.items():
                 data = download_package(release, package, info)
                 upload_package(bucket, package, data, info)
-
 
 
 if __name__ == '__main__':
