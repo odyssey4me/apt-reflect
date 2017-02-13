@@ -10,8 +10,26 @@ import re
 import sys
 
 import boto3
-import lzma
 import requests
+
+try:
+    import lzma
+    HAS_LZMA = True
+except ImportError:
+    HAS_LZMA = True
+
+try:
+    import zlib
+    HAS_ZLIB = True
+except ImportError:
+    HAS_ZLIB = False
+
+try:
+    import gnupg
+    HAS_GNUPG = True
+except ImportError:
+    HAS_GNUPG = False
+
 
 # Start hack, look away
 # TODO: Remove when resolved https://github.com/boto/botocore/issues/1151
@@ -39,12 +57,6 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
-
-try:
-    import gnupg
-    HAS_GNUPG = True
-except ImportError:
-    HAS_GNUPG = False
 
 DATE_FMT = '%a, %d %b %Y %H:%M:%S %Z'
 
@@ -92,7 +104,9 @@ class PackagesFile:
 
 
 class ReleaseFile:
-    def __init__(self, data):
+    def __init__(self, data, url, codename):
+        self.url = url
+        self.codename = codename
         # NOTE: Non-implemented
         #   No-Support-for-Architecture-all
         #   Acquire-By-Hash
@@ -207,6 +221,39 @@ def verify_data(info, data):
                 raise
 
 
+def get_packages_manifest(release, component, arch):
+    files = release.release['files']
+    manifest = '/'.join([component, arch, 'Packages'])
+    keys = [x for x in files if manifest in x]
+    if not keys:
+        LOG.error('Architecture "{}" not found'.format(arch))
+        raise
+    path = min(keys, key=(lambda key: files[key]['size']))
+    raw_data = fetch('/'.join([release.url, 'dists', release.codename, path]))
+    verify_data(files[path], raw_data)
+    data = decompress(path, raw_data)
+    verify_data(files['.'.join(path.split('.')[:-1])], data)
+    return PackagesFile(data.decode("utf-8"))
+
+
+def download_package(release, filename, info):
+    data = fetch('/'.join([release.url, filename]))
+    verify_data(info, data)
+    return data
+
+
+def upload_package(bucket, key, data, info):
+    md5_hex = binascii.a2b_hex(info['MD5sum'])
+    LOG.debug('Pushing {}'.format(key))
+    bucket.put_object(
+        ACL='public-read',
+        Body=data,
+        ContentLength=info['Size'],
+        ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
+        Key=key,
+    )
+
+
 def main():
     s3 = boto3.resource(
         's3',
@@ -219,35 +266,17 @@ def main():
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
-    release = ReleaseFile(release_data.decode('utf-8'))
-    files = release.release['files']
+    release = ReleaseFile(release_data.decode('utf-8'), base, codename)
     for component in ['main', 'contrib', 'non-free']:
         if component not in release.release['Components']:
             LOG.error('Component "{}" not found'.format(component))
             continue
         for arch in ['binary-amd64', 'binary-i386']:
-            base_path = '/'.join([component, arch, 'Packages'])
-            keys = [x for x in files if base_path in x]
-            if not keys:
-                LOG.error('Architecture "{}" not found'.format(arch))
-                continue
-            path = min(keys, key=(lambda key: files[key]['size']))
-            raw_data = fetch('/'.join([base, 'dists', codename, path]))
-            verify_data(files[path], raw_data)
-            data = decompress(path, raw_data)
-            verify_data(files['.'.join(path.split('.')[:-1])], data)
-            packages = PackagesFile(data.decode("utf-8"))
+            packages = get_packages_manifest(release, component, arch)
             for package, info in packages.packages.items():
-                obj_data = fetch('/'.join([base, package]))
-                verify_data(info, obj_data)
-                LOG.debug('Pushing {}'.format(package))
-                obj = bucket.put_object(
-                    ACL='public-read',
-                    ContentLength=info['Size'],
-                    ContentMD5=base64.b64encode(binascii.a2b_hex(info['MD5sum'])).decode('utf-8'),
-                    Body=obj_data,
-                    Key=package,
-                )
+                data = download_package(release, package, info)
+                upload_package(bucket, package, data, info)
+
 
 
 if __name__ == '__main__':
