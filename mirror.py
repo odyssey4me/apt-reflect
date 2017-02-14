@@ -75,8 +75,7 @@ class PackagesFile:
 
             split = line.split(':', 1)
             opt = split[0].strip()
-            if len(split) > 1:
-                value = split[1].strip()
+            value = split[1].strip() if len(split) > 1 else None
 
             if opt in word_opt:
                 info[opt] = value
@@ -85,15 +84,27 @@ class PackagesFile:
 
 
 class ReleaseFile:
-    def __init__(self, data, url, codename):
+    def __init__(self, data, url, codename, components, architectures):
         self.url = url
         self.codename = codename
         self.release = dict()
         self.files = dict()
         self.components = dict()
         self._parse(data)
+        self._fetch_packages(components, architectures)
 
-    def get_packages_manifest(self, component, arch):
+    def _fetch_packages(self, components, architectures):
+        for component in components:
+            if component not in self.release['Components']:
+                LOG.error('Component "{}" not found'.format(component))
+                continue
+            self.components[component] = dict()
+            for arch in architectures:
+                manifest = self._get_packages_manifest(component, arch)
+                self.files.update(manifest.packages)
+                self.components[component][arch] = manifest
+
+    def _get_packages_manifest(self, component, arch):
         manifest = '/'.join([component, arch, 'Packages'])
         keys = [x for x in self.files if manifest in x]
         if not keys:
@@ -104,9 +115,7 @@ class ReleaseFile:
         verify_data(self.files[path], raw_data)
         data = decompress(path, raw_data)
         verify_data(self.files['.'.join(path.split('.')[:-1])], data)
-        if component not in self.components:
-            self.components[component] = dict()
-        self.components[component][arch] = PackagesFile(data.decode("utf-8"))
+        return PackagesFile(data.decode("utf-8"))
 
     def _parse(self, data):
         # NOTE: Non-implemented
@@ -245,17 +254,14 @@ def main():
 
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
+    components = ['main', 'contrib', 'non-free']
+    architectures = ['binary-amd64', 'binary-i386']
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
-    release = ReleaseFile(release_data.decode('utf-8'), base, codename)
-    for component in ['main', 'contrib', 'non-free']:
-        if component not in release.release['Components']:
-            LOG.error('Component "{}" not found'.format(component))
-            continue
-        for arch in ['binary-amd64', 'binary-i386']:
-            release.get_packages_manifest(component, arch)
-            for package, info in release.components[component][arch].packages.items():
-                data = download_package(release, package, info)
-                upload_package(bucket, package, data, info)
+    release = ReleaseFile(release_data.decode('utf-8'), base, codename, components, architectures)
+
+    for filename, info in release.files.items():
+        data = download_package(release, filename, info)
+        upload_package(bucket, filename, data, info)
 
 
 if __name__ == '__main__':
