@@ -91,13 +91,14 @@ class ReleaseFile:
     def __init__(self, data, url, codename, components, architectures):
         self.url = url
         self.codename = codename
+        self.components = components
+        self.architectures = architectures
         self.release = dict()
         self.indices = dict()
         self.files = dict()
         self.pool = dict()
-        self.components = dict()
         self._parse(data)
-        self._fetch_packages(components, architectures)
+        self._fetch_packages()
         self._add_translation_indices()
 
     def _add_translation_indices(self):
@@ -105,26 +106,27 @@ class ReleaseFile:
             if '/i18n/' in k:
                 self.indices.update({k: v})
 
-    def _fetch_packages(self, components, architectures):
-        for component in components:
+    def _fetch_packages(self):
+        for component in self.components:
             if component not in self.release['Components']:
                 LOG.error('Component "{}" not found'.format(component))
                 continue
-            self.components[component] = dict()
-            for arch in architectures:
-                path = '/'.join([
-                    'dists', self.codename, component, arch, 'Packages'])
-                manifest = self._get_packages_index(path, arch)
+            for arch in self.architectures:
+                if arch == 'source':
+                    LOG.warning('Source mirroring is not implemented yet')
+                    continue
+                if arch not in self.release['Architectures']:
+                    LOG.error('Architecture "{}" not found'.format(arch))
+                    continue
+                path = '/'.join(['dists', self.codename, component,
+                    'binary-' + arch, 'Packages'])
+                manifest = self._get_packages_index(path)
+                self.pool.update(manifest.packages)
                 for k in [x for x in self.files if x.startswith(path)]:
                     self.indices.update({k: self.files[k]})
-                self.pool.update(manifest.packages)
-                self.components[component][arch] = manifest
 
-    def _get_packages_index(self, path, arch):
+    def _get_packages_index(self, path):
         keys = [x for x in self.files if x.startswith(path)]
-        if not keys:
-            LOG.error('Architecture "{}" not found'.format(arch))
-            raise
         path = min(keys, key=(lambda key: self.files[key]['size']))
         raw_data = fetch('/'.join([self.url, path]))
         verify_data(self.files[path], raw_data)
@@ -170,13 +172,9 @@ class ReleaseFile:
                 if not section:
                     LOG.error("White space found before key, ignoring line")
                     return
-                if section not in self.release:
-                    self.release[section] = list()
                 checksum, size, path = line.split()
                 size = int(size)
                 path = '/'.join(['dists', self.codename, path])
-
-                self.release[section].append((checksum, size, path))
 
                 if path in self.files:
                     if size != self.files[path]['size']:
@@ -285,13 +283,14 @@ def main():
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
     components = ['main', 'contrib', 'non-free']
-    architectures = ['binary-amd64', 'binary-i386']
+    architectures = ['amd64', 'i386']
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
     release = ReleaseFile(release_data.decode('utf-8'), base, codename,
         components, architectures)
 
     for filename, info in release.pool.items():
         data = download_package(release, filename, info)
+        upload_package(bucket, filename, data, info)
 
     for filename, info in release.indices.items():
         data = download_package(release, filename, info, can_be_missing=True)
