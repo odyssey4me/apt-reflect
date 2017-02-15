@@ -13,6 +13,12 @@ import boto3
 import requests
 
 try:
+    import bz2
+    HAS_BZ2 = True
+except ImportError:
+    HAS_BZ2 = True
+
+try:
     import lzma
     HAS_LZMA = True
 except ImportError:
@@ -46,6 +52,8 @@ class PackagesFile:
 
     def _parse(self, data):
         def save(info):
+            if not info:
+                return
             filename = info['Filename']
             info.pop('Filename')
             self.packages[filename] = info
@@ -61,17 +69,12 @@ class PackagesFile:
         ])
         info = dict()
         lines = data.split('\n')
-        while True:
-            try:
-                line = lines.pop()
-            except IndexError:
-                if info:
-                    save(info)
-                break
+        while lines:
+            line = lines.pop()
             if not line.strip():
-                if info:
-                    save(info)
+                save(info)
                 info = dict()
+                continue
 
             split = line.split(':', 1)
             opt = split[0].strip()
@@ -81,6 +84,7 @@ class PackagesFile:
                 info[opt] = value
             elif opt in int_opt:
                 info[opt] = int(value)
+        save(info)
 
 
 class ReleaseFile:
@@ -88,10 +92,18 @@ class ReleaseFile:
         self.url = url
         self.codename = codename
         self.release = dict()
+        self.indices = dict()
         self.files = dict()
+        self.pool = dict()
         self.components = dict()
         self._parse(data)
         self._fetch_packages(components, architectures)
+        self._add_translation_indices()
+
+    def _add_translation_indices(self):
+        for k, v in self.files.items():
+            if '/i18n/' in k:
+                self.indices.update({k: v})
 
     def _fetch_packages(self, components, architectures):
         for component in components:
@@ -100,18 +112,21 @@ class ReleaseFile:
                 continue
             self.components[component] = dict()
             for arch in architectures:
-                manifest = self._get_packages_manifest(component, arch)
-                self.files.update(manifest.packages)
+                path = '/'.join([
+                    'dists', self.codename, component, arch, 'Packages'])
+                manifest = self._get_packages_index(path, arch)
+                for k in [x for x in self.files if x.startswith(path)]:
+                    self.indices.update({k: self.files[k]})
+                self.pool.update(manifest.packages)
                 self.components[component][arch] = manifest
 
-    def _get_packages_manifest(self, component, arch):
-        manifest = '/'.join([component, arch, 'Packages'])
-        keys = [x for x in self.files if manifest in x]
+    def _get_packages_index(self, path, arch):
+        keys = [x for x in self.files if x.startswith(path)]
         if not keys:
             LOG.error('Architecture "{}" not found'.format(arch))
             raise
         path = min(keys, key=(lambda key: self.files[key]['size']))
-        raw_data = fetch('/'.join([self.url, 'dists', self.codename, path]))
+        raw_data = fetch('/'.join([self.url, path]))
         verify_data(self.files[path], raw_data)
         data = decompress(path, raw_data)
         verify_data(self.files['.'.join(path.split('.')[:-1])], data)
@@ -159,6 +174,7 @@ class ReleaseFile:
                     self.release[section] = list()
                 checksum, size, path = line.split()
                 size = int(size)
+                path = '/'.join(['dists', self.codename, path])
 
                 self.release[section].append((checksum, size, path))
 
@@ -170,10 +186,12 @@ class ReleaseFile:
                 self.files[path][section] = checksum
 
 
-def fetch(url):
+def fetch(url, can_be_missing=False):
     LOG.debug('Fetching {}'.format(url))
     r = requests.get(url)
     if r.status_code != requests.codes.ok:
+        if can_be_missing:
+            return
         LOG.error('Failed request to {}. Code: {}'.format(url, r.status_code))
         raise
     return r.content
@@ -203,8 +221,10 @@ def verify():
 def decompress(name, data):
     if name.endswith('.gz'):
         return zlib.decompress(data)
-    elif name.endswith('.xz'):
+    elif name.endswith(('.xz', '.lzma')):
         return lzma.decompress(data)
+    elif name.endswith('.bz2'):
+        return bz2.decompress(data)
     return data
 
 
@@ -229,19 +249,29 @@ def verify_data(info, data):
 
 
 
-def download_package(release, filename, info):
-    data = fetch('/'.join([release.url, filename]))
+def download_package(release, filename, info, can_be_missing=False):
+    data = fetch('/'.join([release.url, filename]), can_be_missing)
+    if not data:
+        return
     verify_data(info, data)
     return data
 
 
 def upload_package(bucket, key, data, info):
-    md5_hex = binascii.a2b_hex(info['MD5sum'])
+    if 'MD5sum' in info:
+        md5_str = info['MD5sum']
+    else:
+        md5_str = info['MD5Sum']
+    if 'Size' in info:
+        size = info['Size']
+    else:
+        size = info['size']
+    md5_hex = binascii.a2b_hex(md5_str)
     LOG.debug('Pushing {}'.format(key))
     bucket.put_object(
         ACL='public-read',
         Body=data,
-        ContentLength=info['Size'],
+        ContentLength=size,
         ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
         Key=key,
     )
@@ -257,10 +287,16 @@ def main():
     components = ['main', 'contrib', 'non-free']
     architectures = ['binary-amd64', 'binary-i386']
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
-    release = ReleaseFile(release_data.decode('utf-8'), base, codename, components, architectures)
+    release = ReleaseFile(release_data.decode('utf-8'), base, codename,
+        components, architectures)
 
-    for filename, info in release.files.items():
+    for filename, info in release.pool.items():
         data = download_package(release, filename, info)
+
+    for filename, info in release.indices.items():
+        data = download_package(release, filename, info, can_be_missing=True)
+        if not data:
+            continue
         upload_package(bucket, filename, data, info)
 
 
