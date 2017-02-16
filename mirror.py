@@ -96,42 +96,39 @@ class PackagesFile:
 
 
 class ReleaseFile:
-    def __init__(self, data, url, codename, components, architectures):
+    def __init__(self, data, url, codename):
         self.url = url
         self.codename = codename
-        self.components = components
-        self.architectures = architectures
         self.release = dict()
         self.indices = dict()
         self.files = dict()
         self.pool = dict()
         self._parse(data)
-        self._fetch_packages()
-        self._add_translation_indices()
 
-    def _add_translation_indices(self):
-        for k, v in self.files.items():
-            if '/i18n/' in k:
-                self.indices.update({k: v})
+    def _get_index_paths(self, **kwargs):
+        return \
+            self._get_translation_index_paths() + \
+            self._get_packages_index_paths(**kwargs)
 
-    def _fetch_packages(self):
-        for component in self.components:
+    def _get_packages_index_paths(self, components, architectures):
+        ret = list()
+        for component in components:
             if component not in self.release['Components']:
                 LOG.error('Component "{}" not found'.format(component))
                 continue
-            for arch in self.architectures:
+            for arch in architectures:
                 if arch == 'source':
                     LOG.warning('Source mirroring is not implemented yet')
                     continue
                 if arch not in self.release['Architectures']:
                     LOG.error('Architecture "{}" not found'.format(arch))
                     continue
-                path = '/'.join(['dists', self.codename, component,
-                    'binary-' + arch, 'Packages'])
-                manifest = self._get_packages_index(path)
-                self.pool.update(manifest.packages)
-                for k in [x for x in self.files if x.startswith(path)]:
-                    self.indices.update({k: self.files[k]})
+                ret.append('/'.join(['dists', self.codename, component,
+                    'binary-' + arch, 'Packages']))
+        return ret
+
+    def _get_translation_index_paths(self):
+        return [k for k in self.files if '/i18n/' in k]
 
     def _get_packages_index(self, path):
         keys = [x for x in self.files if x.startswith(path)]
@@ -140,7 +137,17 @@ class ReleaseFile:
         verify_data(self.files[path], raw_data)
         data = decompress(path, raw_data)
         verify_data(self.files['.'.join(path.split('.')[:-1])], data)
-        return PackagesFile(data.decode("utf-8"))
+        return PackagesFile(data.decode("utf-8")).packages
+
+    def get_indices(self, **kwargs):
+        return {k: self.files[k] for k in self._get_index_paths(**kwargs)}
+
+    def get_packages(self, **kwargs):
+        return {
+            k: v
+            for i in self._get_packages_index_paths(**kwargs)
+            for k, v in self._get_packages_index(i).items()
+        }
 
     def _parse(self, data):
         # NOTE: Non-implemented
@@ -282,17 +289,18 @@ def main():
 
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
-    components = ['main', 'contrib', 'non-free']
-    architectures = ['amd64', 'i386']
+    kwargs = {
+        'components': ['main', 'contrib', 'non-free'],
+        'architectures': ['amd64', 'i386'],
+    }
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
-    release = ReleaseFile(release_data.decode('utf-8'), base, codename,
-        components, architectures)
+    release = ReleaseFile(release_data.decode('utf-8'), base, codename)
 
-    for filename, info in release.pool.items():
+    for filename, info in release.get_packages(**kwargs).items():
         data = download_package(release, filename, info)
         upload_package(bucket, filename, data, info)
 
-    for filename, info in release.indices.items():
+    for filename, info in release.get_indices(**kwargs).items():
         data = download_package(release, filename, info, can_be_missing=True)
         if not data:
             continue
