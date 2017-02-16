@@ -45,6 +45,15 @@ LOG = logging.getLogger(__name__)
 
 DATE_FMT = '%a, %d %b %Y %H:%M:%S %Z'
 
+OPT_MAP = {
+    'MD5sum': 'md5',
+    'MD5Sum': 'md5',
+    'Size': 'size',
+    'SHA1': 'sha1',
+    'SHA256': 'sha256',
+    'Filename': 'filename',
+}
+
 class PackagesFile:
     def __init__(self, data):
         self.packages = dict()
@@ -54,8 +63,7 @@ class PackagesFile:
         def save(info):
             if not info:
                 return
-            filename = info['Filename']
-            info.pop('Filename')
+            filename = info.pop('filename')
             self.packages[filename] = info
 
         word_opt = set([
@@ -81,9 +89,9 @@ class PackagesFile:
             value = split[1].strip() if len(split) > 1 else None
 
             if opt in word_opt:
-                info[opt] = value
+                info[OPT_MAP[opt]] = value
             elif opt in int_opt:
-                info[opt] = int(value)
+                info[OPT_MAP[opt]] = int(value)
         save(info)
 
 
@@ -165,7 +173,7 @@ class ReleaseFile:
                 if opt in list_opt:
                     self.release[opt] = [x for x in value.split()]
                 elif opt in multiline_opt:
-                    section = opt
+                    section = OPT_MAP[opt]
                 elif opt in date_opt:
                     self.release[opt] = datetime.strptime(value, DATE_FMT)
             else:
@@ -228,19 +236,19 @@ def decompress(name, data):
 
 def verify_data(info, data):
     for k, v in info.items():
-        if k == 'Size' or k == 'size':
+        if k == 'size':
             if len(data) != v:
                 LOG.error('Filesize mismatch')
                 raise
-        elif k == 'MD5Sum' or k == 'MD5sum':
+        elif k == 'md5':
             if hashlib.md5(data).hexdigest() != v:
                 LOG.error('MD5 mismatch')
                 raise
-        elif k == 'SHA1':
+        elif k == 'sha1':
             if hashlib.sha1(data).hexdigest() != v:
                 LOG.error('SHA1 mismatch')
                 raise
-        elif k == 'SHA256':
+        elif k == 'sha256':
             if hashlib.sha256(data).hexdigest() != v:
                 LOG.error('SHA256 mismatch')
                 raise
@@ -256,20 +264,12 @@ def download_package(release, filename, info, can_be_missing=False):
 
 
 def upload_package(bucket, key, data, info):
-    if 'MD5sum' in info:
-        md5_str = info['MD5sum']
-    else:
-        md5_str = info['MD5Sum']
-    if 'Size' in info:
-        size = info['Size']
-    else:
-        size = info['size']
-    md5_hex = binascii.a2b_hex(md5_str)
+    md5_hex = binascii.a2b_hex(info['md5'])
     LOG.debug('Pushing {}'.format(key))
     bucket.put_object(
         ACL='public-read',
         Body=data,
-        ContentLength=size,
+        ContentLength=info['size'],
         ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
         Key=key,
     )
