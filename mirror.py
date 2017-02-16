@@ -8,6 +8,8 @@ import logging
 from io import BytesIO
 import re
 import sys
+import queue
+import threading
 
 import boto3
 import botocore.exceptions
@@ -54,6 +56,7 @@ OPT_MAP = {
     'SHA256': 'sha256',
     'Filename': 'filename',
 }
+
 
 class PackagesFile:
     def __init__(self, data):
@@ -302,18 +305,32 @@ def main():
     release_data = fetch('/'.join([base, 'dists', codename, 'Release']))
     release = ReleaseFile(release_data.decode('utf-8'), base, codename)
 
+    threads = 200
+    q = queue.Queue(threads * 2)
+    for i in range(threads):
+        t = threading.Thread(target=do_work, args=(q,))
+        t.daemon = True
+        t.start()
     for filename, info in release.get_packages(**kwargs).items():
-        data = download_package(release, filename, info, s3_client)
+        q.put((release, filename, info, s3_client, False))
+
+    q.join()
+    for filename, info in release.get_packages(**kwargs).items():
+        q.put((release, filename, info, s3_client, True))
+
+    q.join()
+
+def do_work(work_queue):
+    while True:
+        queue_item = work_queue.get()
+        release, filename, info, s3_client, can_be_missing = queue_item
+        s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
+        data = download_package(release, filename, info, s3_client, can_be_missing)
         if not data:
+            work_queue.task_done()
             continue
         upload_package(s3_client, filename, data, info)
-
-    for filename, info in release.get_indices(**kwargs).items():
-        data = download_package(release, filename, info, s3_client, can_be_missing=True)
-        if not data:
-            continue
-        upload_package(s3_client, filename, data, info)
-
+        work_queue.task_done()
 
 if __name__ == '__main__':
     main()
