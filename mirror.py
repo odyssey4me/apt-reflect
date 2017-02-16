@@ -10,6 +10,7 @@ import re
 import sys
 
 import boto3
+import botocore.exceptions
 import requests
 
 try:
@@ -255,7 +256,19 @@ def verify_data(info, data):
             LOG.error('Unknown verification data key "{}"'.format(k))
 
 
-def download_package(release, filename, info, can_be_missing=False):
+def download_package(release, filename, info, client, can_be_missing=False):
+    try:
+        meta = client.head_object(Bucket='testing', Key=filename)
+    except botocore.exceptions.ClientError:
+        meta = None
+
+    if \
+        meta and \
+        meta['ContentLength'] == info['size'] and \
+        meta['ETag'][1:-1] == info['md5']:
+        LOG.info('Already downloaded {}, Skipping'.format(filename))
+        return
+
     data = fetch('/'.join([release.url, filename]), can_be_missing)
     if not data:
         return
@@ -263,12 +276,13 @@ def download_package(release, filename, info, can_be_missing=False):
     return data
 
 
-def upload_package(bucket, key, data, info):
+def upload_package(client, key, data, info):
     md5_hex = binascii.a2b_hex(info['md5'])
     LOG.debug('Pushing {}'.format(key))
-    bucket.put_object(
+    client.put_object(
         ACL='public-read',
         Body=data,
+        Bucket='testing',
         ContentLength=info['size'],
         ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
         Key=key,
@@ -276,9 +290,8 @@ def upload_package(bucket, key, data, info):
 
 
 def main():
-    s3 = boto3.resource('s3', endpoint_url='http://10.10.1.1:7480')
-    bucket = s3.Bucket('testing')
-    bucket.create(ACL='public-read')
+    s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
+    bucket = s3_client.create_bucket(Bucket='testing', ACL='public-read')
 
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
@@ -290,14 +303,16 @@ def main():
     release = ReleaseFile(release_data.decode('utf-8'), base, codename)
 
     for filename, info in release.get_packages(**kwargs).items():
-        data = download_package(release, filename, info)
-        upload_package(bucket, filename, data, info)
-
-    for filename, info in release.get_indices(**kwargs).items():
-        data = download_package(release, filename, info, can_be_missing=True)
+        data = download_package(release, filename, info, s3_client)
         if not data:
             continue
-        upload_package(bucket, filename, data, info)
+        upload_package(s3_client, filename, data, info)
+
+    for filename, info in release.get_indices(**kwargs).items():
+        data = download_package(release, filename, info, s3_client, can_be_missing=True)
+        if not data:
+            continue
+        upload_package(s3_client, filename, data, info)
 
 
 if __name__ == '__main__':
