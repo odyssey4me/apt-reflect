@@ -247,19 +247,12 @@ def verify_data(info, data):
             if len(data) != v:
                 LOG.error('Filesize mismatch')
                 raise
-        elif k == 'md5':
-            if hashlib.md5(data).hexdigest() != v:
-                LOG.error('MD5 mismatch')
+        elif k in ['md5', 'sha1', 'sha256']:
+            if getattr(hashlib, k)(data).hexdigest() != v:
+                LOG.error('{} mismatch'.format(k))
                 raise
-        elif k == 'sha1':
-            if hashlib.sha1(data).hexdigest() != v:
-                LOG.error('SHA1 mismatch')
-                raise
-        elif k == 'sha256':
-            if hashlib.sha256(data).hexdigest() != v:
-                LOG.error('SHA256 mismatch')
-                raise
-
+        else:
+            LOG.error('Unknown verification data key "{}"'.format(k))
 
 
 def download_package(release, filename, info, can_be_missing=False):
