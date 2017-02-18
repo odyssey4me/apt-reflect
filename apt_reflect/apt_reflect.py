@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-import binascii
 import base64
+import binascii
+import bz2
 from datetime import datetime
 import hashlib
 import logging
@@ -10,28 +11,18 @@ import re
 import sys
 import queue
 import threading
+import zlib
 
 import boto3
 import botocore.exceptions
 import requests
 
-try:
-    import bz2
-    HAS_BZ2 = True
-except ImportError:
-    HAS_BZ2 = True
 
 try:
     import lzma
     HAS_LZMA = True
 except ImportError:
-    HAS_LZMA = True
-
-try:
-    import zlib
-    HAS_ZLIB = True
-except ImportError:
-    HAS_ZLIB = False
+    HAS_LZMA = False
 
 try:
     import gnupg
