@@ -1,7 +1,10 @@
 from distutils.core import setup
 setup(
     name = 'apt-reflect',
-    packages = ['apt_reflect'],
+    packages = [
+        'apt_reflect',
+        'apt_reflect.indices',
+    ],
     version = '0.1.2',
     description = 'APT mirror to object storage',
     author = 'Sam Yaple',
