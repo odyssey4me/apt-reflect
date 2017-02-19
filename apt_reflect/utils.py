@@ -3,14 +3,15 @@
 import base64
 import binascii
 import bz2
+import gzip
 import hashlib
+import io
 import logging
 from io import BytesIO
 import re
 import sys
 import queue
 import threading
-import zlib
 
 import requests
 
@@ -66,7 +67,7 @@ def verify():
 
 def decompress(name, data):
     if name.endswith('.gz'):
-        return zlib.decompress(data)
+        return gzip.GzipFile(fileobj=io.BytesIO(data)).read()
     elif name.endswith('.bz2'):
         return bz2.decompress(data)
     elif name.endswith(('.xz', '.lzma')):
