@@ -4,6 +4,7 @@ OPT_MAP = {
     'Size': 'size',
     'SHA1': 'sha1',
     'SHA256': 'sha256',
+    'SHA512': 'sha512',
 }
 
 
@@ -28,10 +29,9 @@ class PackagesIndex:
         int_opt = set([
             'Size',
         ])
+
         info = dict()
-        lines = data.split('\n')
-        while lines:
-            line = lines.pop()
+        for line in data.split('\n'):
             if not line.strip():
                 save(info)
                 info = dict()
