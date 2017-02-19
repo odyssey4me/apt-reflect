@@ -59,7 +59,7 @@ class SourcesIndex:
                 section = None
                 split = line.split(':', 1)
                 opt = split[0].strip()
-                value = split[1].strip() if len(split) > 1 else None
+                value = split[-1].strip()
 
                 if opt in word_opt:
                     info[opt] = value

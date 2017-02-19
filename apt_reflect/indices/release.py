@@ -117,7 +117,7 @@ class ReleaseIndex:
             if not re.match(r'\s', line):
                 split = line.split(':', 1)
                 opt = split[0].strip()
-                value = split[1].strip() if len(split) > 1 else None
+                value = split[-1].strip()
 
                 if opt in list_opt:
                     self.release[opt] = [x for x in value.split()]
