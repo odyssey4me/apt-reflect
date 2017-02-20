@@ -3,6 +3,7 @@
 import base64
 import binascii
 import bz2
+import contextlib
 import gzip
 import hashlib
 import io
@@ -123,3 +124,24 @@ def upload_package(client, key, data, info):
         ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
         Key=key,
     )
+
+
+def check_arch_exists(base_url, release, component, arch):
+    ret = list()
+    index = '/'.join([base_url, 'dists', release, component, arch, 'Packages'])
+    for ext in ['.gz', '.bz2', '.xz', '.lzma', str()]:
+        url = index + ext
+        with contextlib.closing(requests.head(url, allow_redirects=True)) as r:
+            if r.status_code == requests.codes.ok:
+                ret.append(url)
+    return ret
+
+
+def find_packages_indices(base, codename):
+    packages_indices = list()
+    for component in ['main', 'contrib', 'non-free']:
+        for arch in ['binary-amd64', 'binary-i386']:
+            url = check_arch_exists(base, codename, component, arch)
+            if url:
+                packages_indices.extend(url)
+    return packages_indices
