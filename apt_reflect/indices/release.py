@@ -79,7 +79,7 @@ class ReleaseIndex:
         utils.verify_data(self.files[path], raw_data)
         data = utils.decompress(path, raw_data)
         utils.verify_data(self.files['.'.join(path.split('.')[:-1])], data)
-        return packages_index.PackagesIndex(data.decode("utf-8")).packages
+        return packages_index.PackagesIndex(data.decode("utf-8")).files
 
     def get_indices(self, **kwargs):
         return {k: self.files[k] for k in self._get_index_paths(**kwargs)}
