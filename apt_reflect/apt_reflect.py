@@ -48,7 +48,7 @@ def main():
         q.put((release, filename, info, False))
 
     q.join()
-    for filename, info in release.get_packages(**kwargs).items():
+    for filename, info in release.get_indices(**kwargs).items():
         q.put((release, filename, info, True))
 
     q.join()
