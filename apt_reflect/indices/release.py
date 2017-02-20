@@ -12,11 +12,16 @@ LOG = logging.getLogger(__name__)
 DATE_FMT = '%a, %d %b %Y %H:%M:%S %Z'
 
 OPT_MAP = {
+    'Architectures': 'architectures',
+    'Components': 'components',
+    'Date': 'date',
     'Filename': 'filename',
     'MD5Sum': 'md5',
     'Size': 'size',
     'SHA1': 'sha1',
     'SHA256': 'sha256',
+    'SHA512': 'sha512',
+    'Valid-Until': 'valid-until',
 }
 
 
@@ -24,10 +29,25 @@ class ReleaseIndex:
     def __init__(self, data, url, codename):
         self.url = url
         self.codename = codename
-        self.release = dict()
         self.indices = dict()
-        self.files = dict()
         self.pool = dict()
+        self.metadata = dict()
+
+        self.date_opt = set([
+            'Date',
+            'Valid-Until',
+        ])
+        self.list_opt = set([
+            'Architectures',
+            'Components',
+        ])
+        self.multiline_opt = set([
+            'MD5Sum',
+            'SHA1',
+            'SHA256',
+        ])
+
+        self.files = dict()
         self._parse(data)
 
     def _get_index_paths(self, **kwargs):
@@ -38,14 +58,14 @@ class ReleaseIndex:
     def _get_packages_index_paths(self, components, architectures):
         ret = list()
         for component in components:
-            if component not in self.release['Components']:
+            if component not in self.metadata['components']:
                 LOG.error('Component "{}" not found'.format(component))
                 continue
             for arch in architectures:
                 if arch == 'source':
                     LOG.warning('Source mirroring is not implemented yet')
                     continue
-                if arch not in self.release['Architectures']:
+                if arch not in self.metadata['architectures']:
                     LOG.error('Architecture "{}" not found'.format(arch))
                     continue
                 ret.append('/'.join(['dists', self.codename, component,
@@ -92,50 +112,37 @@ class ReleaseIndex:
         }
 
     def _parse(self, data):
-        # NOTE: Non-implemented
-        #   No-Support-for-Architecture-all
-        #   Acquire-By-Hash
-        #   Signed-By
-
-        # NOTE: Validate and/or block on Valid-Until field
-
-        date_opt = set([
-            'Date',
-            'Valid-Until',
-        ])
-        list_opt = set([
-            'Architectures',
-            'Components',
-        ])
-        multiline_opt = set([
-            'MD5Sum',
-            'SHA1',
-            'SHA256',
-        ])
-
+        section = str()
         for line in data.split('\n'):
             if not re.match(r'\s', line):
-                split = line.split(':', 1)
-                opt = split[0].strip()
-                value = split[-1].strip()
-
-                if opt in list_opt:
-                    self.release[opt] = [x for x in value.split()]
-                elif opt in multiline_opt:
-                    section = OPT_MAP[opt]
-                elif opt in date_opt:
-                    self.release[opt] = datetime.strptime(value, DATE_FMT)
+                section = self._parse_line(line)
             else:
-                if not section:
-                    LOG.error("White space found before key, ignoring line")
-                    return
-                checksum, size, path = line.split()
-                size = int(size)
-                path = '/'.join(['dists', self.codename, path])
+                self._parse_multiline(line, section)
 
-                if path in self.files:
-                    if size != self.files[path]['size']:
-                        LOG.error('size mismatch for file: {}'.format(path))
-                else:
-                    self.files[path] = {'size': size}
-                self.files[path][section] = checksum
+    def _parse_line(self, line):
+        split = line.split(':', 1)
+        opt = split[0].strip()
+        value = split[-1].strip()
+
+        if opt in self.list_opt:
+            self.metadata[OPT_MAP[opt]] = [x for x in value.split()]
+        elif opt in self.multiline_opt:
+            return OPT_MAP[opt]
+        elif opt in self.date_opt:
+            self.metadata[OPT_MAP[opt]] = datetime.strptime(value, DATE_FMT)
+
+    def _parse_multiline(self, line, section):
+        if not section in ['md5', 'sha1', 'sha256', 'sha512']:
+            return
+
+        checksum, size, partial_path = line.split()
+        path = '/'.join(['dists', 'jessie', partial_path])
+        size = int(size)
+        if path not in self.files:
+            self.files[path] = dict()
+        if 'size' in self.files[path] and size != self.files[path]['size']:
+            LOG.error('size mismatch for file: {}'.format(path))
+            raise
+        else:
+            self.files[path]['size'] = size
+        self.files[path][section] = checksum
