@@ -36,13 +36,13 @@ LOG = logging.getLogger(__name__)
 
 def fetch(url, can_be_missing=False):
     LOG.debug('Fetching {}'.format(url))
-    r = requests.get(url)
-    if r.status_code != requests.codes.ok:
-        if can_be_missing:
-            return
-        LOG.error('Failed request to {}. Code: {}'.format(url, r.status_code))
-        raise
-    return r.content
+    with contextlib.closing(requests.get(url)) as r:
+        if r.status_code != requests.codes.ok:
+            if can_be_missing:
+                return
+            LOG.error('Failed request to {}. Code: {}'.format(url, r.status_code))
+            raise
+        return r.content
 
 
 # NOTE: Not implemented
