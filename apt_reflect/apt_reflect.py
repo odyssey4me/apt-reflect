@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
 
-import base64
-import binascii
-import bz2
-from datetime import datetime
-import hashlib
 import logging
-from io import BytesIO
-import re
-import sys
 import queue
 import threading
-import zlib
 
 import boto3
-import botocore.exceptions
 
 from apt_reflect import utils
 from apt_reflect.indices import release as release_index
