@@ -75,20 +75,16 @@ class ReleaseIndex:
     def _get_translation_index_paths(self):
         return [k for k in self.files if '/i18n/' in k]
 
-    def _get_packages_index_path(self, path, smallest=False, prefered_compression=None):
+    def _get_packages_index_path(self, path, smallest=False):
         if smallest:
             keys = [x for x in self.files if x.startswith(path)]
             paths = sorted(keys, key=lambda key: self.files[key]['size'])
-            compression_types = [x.rsplit('.', 1)[-1] for x in paths]
         else:
-            compression_types = ['gz', 'bz2', 'xz', 'lzma']
-            if prefered_compression:
-                compression_types.insert(0, prefered_compression)
+            paths = ['.'.join([path, x]) for x in ['gz', 'bz2', 'xz', 'lzma']]
 
-        for compression in compression_types:
-            possible_path = '.'.join([path, compression])
-            if possible_path in self.files:
-                return possible_path
+        for path in paths:
+            if utils.check_exists('/'.join([self.url, path])):
+                return path
 
         # NOTE: No supported compression was found, return uncompressed path
         return path

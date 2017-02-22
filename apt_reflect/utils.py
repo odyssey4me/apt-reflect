@@ -151,3 +151,7 @@ def find_packages_indices(base, codename, release=None):
                         paths.append(path)
                     packages_indices.extend(paths)
     return packages_indices
+
+def check_exists(url):
+    with contextlib.closing(requests.head(url, allow_redirects=True)) as r:
+        return r.status_code == requests.codes.ok
