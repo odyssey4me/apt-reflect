@@ -16,9 +16,6 @@ LOG = logging.getLogger(__name__)
 
 
 def main():
-    s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
-    bucket = s3_client.create_bucket(Bucket='testing', ACL='public-read')
-
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
     kwargs = {

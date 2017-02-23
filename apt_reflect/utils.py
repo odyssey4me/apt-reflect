@@ -131,9 +131,8 @@ def check_arch_exists(base_url, path):
     index = '/'.join([base_url, path])
     for ext in ['.gz', '.bz2', '.xz', '.lzma', str()]:
         url = index + ext
-        with contextlib.closing(requests.head(url, allow_redirects=True)) as r:
-            if r.status_code == requests.codes.ok:
-                ret.append(path)
+        if check_exists(url):
+            ret.append(path)
     return ret
 
 
