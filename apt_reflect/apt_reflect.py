@@ -49,10 +49,10 @@ def main():
     #q.join()
 
 def do_work(work_queue):
+    s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
     while True:
         queue_item = work_queue.get()
         release, filename, info, can_be_missing = queue_item
-        s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
         data = utils.download_package(release, filename, info, s3_client, can_be_missing)
         if not data:
             work_queue.task_done()
