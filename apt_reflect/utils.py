@@ -139,6 +139,7 @@ def check_exists(url):
     with contextlib.closing(requests.head(url, allow_redirects=True)) as r:
         return r.status_code == requests.codes.ok
 
+
 def get_session(bucket):
     session = boto3.session.Session()
     s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
