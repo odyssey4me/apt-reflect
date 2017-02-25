@@ -3,13 +3,11 @@
 import queue
 import threading
 
-import boto3
+from apt_reflect import utils
 
 
 def main():
-    session = boto3.session.Session()
-    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
-    bucket = s3.Bucket('testing')
+    bucket = utils.get_session('testing')
     items = set([x.key for x in bucket.objects.all()])
     delete = {'Objects': []}
     for i in bucket.objects.all():

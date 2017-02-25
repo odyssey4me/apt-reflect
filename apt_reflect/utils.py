@@ -14,6 +14,7 @@ import sys
 import queue
 import threading
 
+import boto3
 import botocore
 import requests
 
@@ -31,6 +32,8 @@ except ImportError:
     HAS_GNUPG = False
 
 
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 LOG = logging.getLogger(__name__)
 
@@ -135,3 +138,8 @@ def find_packages_indices(base, codename, components, architectures):
 def check_exists(url):
     with contextlib.closing(requests.head(url, allow_redirects=True)) as r:
         return r.status_code == requests.codes.ok
+
+def get_session(bucket):
+    session = boto3.session.Session()
+    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
+    return s3.Bucket('testing')

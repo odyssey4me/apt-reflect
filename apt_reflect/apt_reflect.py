@@ -4,14 +4,10 @@ import logging
 import queue
 import threading
 
-import boto3
-
 from apt_reflect import utils
 from apt_reflect.indices import release as release_index
 from apt_reflect.indices import packages as packages_index
 
-logging.getLogger("boto3").setLevel(logging.WARNING)
-logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
 
@@ -38,9 +34,7 @@ def main():
         t.daemon = True
         t.start()
 
-    session = boto3.session.Session()
-    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
-    bucket = s3.Bucket('testing')
+    bucket = utils.get_session('testing')
     items = set([x.key for x in bucket.objects.all()])
     for path in packages_indices:
         packages = packages_index.PackagesIndex('/'.join([base, path]))
@@ -55,9 +49,7 @@ def main():
     #q.join()
 
 def do_work(work_queue):
-    session = boto3.session.Session()
-    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
-    bucket = s3.Bucket('testing')
+    bucket = utils.get_session('testing')
     while True:
         queue_item = work_queue.get()
         release, filename, info, can_be_missing = queue_item
