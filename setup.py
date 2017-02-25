@@ -16,6 +16,7 @@ setup(
     entry_points={
         'console_scripts': [
             'apt-reflect=apt_reflect.apt_reflect:main',
+            'apt-reflect-purge=apt_reflect.purge:main',
         ],
     },
 )
