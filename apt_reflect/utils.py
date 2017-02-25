@@ -89,7 +89,7 @@ def verify_data(info, data):
             if len(data) != v:
                 LOG.error('Filesize mismatch')
                 raise
-        elif k in ['md5', 'sha1', 'sha256']:
+        elif k in ['md5', 'sha1', 'sha256', 'sha512']:
             if getattr(hashlib, k)(data).hexdigest() != v:
                 LOG.error('{} mismatch'.format(k))
                 raise
