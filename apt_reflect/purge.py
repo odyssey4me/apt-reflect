@@ -8,7 +8,6 @@ from apt_reflect import utils
 
 def main():
     bucket = utils.get_session('testing')
-    items = set([x.key for x in bucket.objects.all()])
     delete = {'Objects': []}
     for i in bucket.objects.all():
         if len(delete) < 1000:
