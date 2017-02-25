@@ -1,5 +1,7 @@
 import logging
 
+from apt_reflect import utils
+
 LOG = logging.getLogger(__name__)
 
 OPT_MAP = {
@@ -13,7 +15,7 @@ OPT_MAP = {
 
 
 class PackagesIndex:
-    def __init__(self, data):
+    def __init__(self, packages_url):
         self.word_opt = set([
             'Filename',
             'MD5sum',
@@ -25,7 +27,8 @@ class PackagesIndex:
         ])
 
         self.files = dict()
-        self._parse(data)
+        raw_data = utils.fetch(packages_url)
+        self._parse(utils.decompress(packages_url, raw_data).decode('utf-8'))
 
     def _parse(self, data):
         info = dict()

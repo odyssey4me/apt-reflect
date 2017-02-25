@@ -8,6 +8,7 @@ import boto3
 
 from apt_reflect import utils
 from apt_reflect.indices import release as release_index
+from apt_reflect.indices import packages as packages_index
 
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -18,27 +19,34 @@ LOG = logging.getLogger(__name__)
 def main():
     base = 'http://deb.debian.org/debian'
     codename = 'jessie'
-    kwargs = {
-        'components': ['main', 'contrib', 'non-free'],
-        'architectures': ['amd64', 'i386'],
-    }
-    release_data = utils.fetch('/'.join([base, 'dists', codename, 'Release']))
-    release = release_index.ReleaseIndex(release_data.decode('utf-8'), base, codename)
+    comps = ['non-free', 'contrib']
+    arches = ['binary-amd64', 'binary-i386']
 
-    threads = 200
+    release_path = '/'.join([base, 'dists', codename, 'Release'])
+    if utils.check_exists(release_path):
+        release = release_index.ReleaseIndex(release_path, base, codename)
+        packages_indices = release.get_packages_indices(
+            comps, arches, smallest=True)
+    else:
+        packages_indices = utils.find_packages_indices(base, codename,
+            comps, arches)
+
+
+    threads = 20
     q = queue.Queue(threads * 2)
     for i in range(threads):
         t = threading.Thread(target=do_work, args=(q,))
         t.daemon = True
         t.start()
-    for filename, info in release.get_packages(**kwargs).items():
-        q.put((release, filename, info, False))
+    for path in packages_indices:
+        packages = packages_index.PackagesIndex('/'.join([base, path]))
+        for filename, info in packages.files.items():
+            q.put((release, filename, info, False))
+        q.join()
 
-    q.join()
-    for filename, info in release.get_indices(**kwargs).items():
-        q.put((release, filename, info, True))
-
-    q.join()
+    #for filename, info in release.get_indices(**kwargs).items():
+    #    q.put((release, filename, info, True))
+    #q.join()
 
 def do_work(work_queue):
     while True:

@@ -14,6 +14,7 @@ import sys
 import queue
 import threading
 
+import botocore
 import requests
 
 
@@ -127,29 +128,23 @@ def upload_package(client, key, data, info):
 
 
 def check_arch_exists(base_url, path):
-    ret = list()
     index = '/'.join([base_url, path])
     for ext in ['.gz', '.bz2', '.xz', '.lzma', str()]:
         url = index + ext
         if check_exists(url):
-            ret.append(path)
-    return ret
+            return path + ext
 
 
-def find_packages_indices(base, codename, release=None):
+def find_packages_indices(base, codename, components, architectures):
     packages_indices = list()
-    for component in ['main', 'contrib', 'non-free']:
-        for arch in ['binary-amd64', 'binary-i386']:
-            path = '/'.join(['dists', codename, component, arch, 'Packages'])
-            if release:
-                packages_indices.extend([x for x in release.files if x.startswith(path)])
-            else:
-                paths = check_arch_exists(base, path)
-                if paths:
-                    if path not in paths:
-                        paths.append(path)
-                    packages_indices.extend(paths)
+    for comp in components:
+        for arch in architectures:
+            url = '/'.join(['dists', codename, comp, arch, 'Packages'])
+            path = check_arch_exists(base, url)
+            if path:
+                packages_indices.append(path)
     return packages_indices
+
 
 def check_exists(url):
     with contextlib.closing(requests.head(url, allow_redirects=True)) as r:

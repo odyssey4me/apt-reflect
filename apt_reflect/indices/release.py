@@ -26,7 +26,7 @@ OPT_MAP = {
 
 
 class ReleaseIndex:
-    def __init__(self, data, url, codename):
+    def __init__(self, release_url, url, codename):
         self.url = url
         self.codename = codename
         self.indices = dict()
@@ -48,12 +48,22 @@ class ReleaseIndex:
         ])
 
         self.files = dict()
-        self._parse(data)
+        self._parse(utils.fetch(release_url).decode('utf-8'))
 
     def _get_index_paths(self, **kwargs):
         return \
             self._get_translation_index_paths() + \
             self._get_packages_index_paths(**kwargs)
+
+    def get_packages_indices(self, components, architectures, **kwargs):
+        return [
+            self._get_packages_index(
+                '/'.join(['dists', self.codename, comp, arch, 'Packages']),
+                **kwargs
+            )
+            for comp in components
+            for arch in architectures
+        ]
 
     def _get_packages_index_paths(self, components, architectures):
         ret = list()
@@ -75,7 +85,7 @@ class ReleaseIndex:
     def _get_translation_index_paths(self):
         return [k for k in self.files if '/i18n/' in k]
 
-    def _get_packages_index_path(self, path, smallest=False):
+    def _get_packages_index(self, path, smallest=False):
         if smallest:
             keys = [x for x in self.files if x.startswith(path)]
             paths = sorted(keys, key=lambda key: self.files[key]['size'])
@@ -89,13 +99,13 @@ class ReleaseIndex:
         # NOTE: No supported compression was found, return uncompressed path
         return path
 
-    def _get_packages_index(self, path):
-        path = self._get_packages_index_path(path)
-        raw_data = utils.fetch('/'.join([self.url, path]))
-        utils.verify_data(self.files[path], raw_data)
-        data = utils.decompress(path, raw_data)
-        utils.verify_data(self.files['.'.join(path.split('.')[:-1])], data)
-        return packages_index.PackagesIndex(data.decode("utf-8")).files
+    #def _get_packages_index(self, path):
+    #    path = self._get_packages_index_path(path)
+    #    raw_data = utils.fetch('/'.join([self.url, path]))
+    #    utils.verify_data(self.files[path], raw_data)
+    #    data = utils.decompress(path, raw_data)
+    #    utils.verify_data(self.files['.'.join(path.split('.')[:-1])], data)
+    #    return packages_index.PackagesIndex(data.decode("utf-8")).files
 
     def get_indices(self, **kwargs):
         return {k: self.files[k] for k in self._get_index_paths(**kwargs)}
