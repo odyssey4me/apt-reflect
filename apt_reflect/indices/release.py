@@ -33,19 +33,19 @@ class ReleaseIndex:
         self.pool = dict()
         self.metadata = dict()
 
-        self.date_opt = set([
+        self.date_opt = {
             'Date',
             'Valid-Until',
-        ])
-        self.list_opt = set([
+        }
+        self.list_opt = {
             'Architectures',
             'Components',
-        ])
-        self.multiline_opt = set([
+        }
+        self.multiline_opt = {
             'MD5Sum',
             'SHA1',
             'SHA256',
-        ])
+        }
 
         self.files = dict()
         self._parse(utils.fetch(release_url).decode('utf-8'))

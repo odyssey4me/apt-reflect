@@ -16,15 +16,15 @@ OPT_MAP = {
 
 class PackagesIndex:
     def __init__(self, packages_url):
-        self.word_opt = set([
+        self.word_opt = {
             'Filename',
             'MD5sum',
             'SHA1',
             'SHA256',
-        ])
-        self.int_opt = set([
+        }
+        self.int_opt = {
             'Size',
-        ])
+        }
 
         self.files = dict()
         raw_data = utils.fetch(packages_url)

@@ -35,7 +35,7 @@ def main():
         t.start()
 
     bucket = utils.get_session('testing')
-    items = set([x.key for x in bucket.objects.all()])
+    items = {x.key for x in bucket.objects.all()}
     for path in packages_indices:
         packages = packages_index.PackagesIndex('/'.join([base, path]))
         for filename, info in packages.files.items():

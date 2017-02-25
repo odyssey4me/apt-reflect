@@ -13,15 +13,15 @@ OPT_MAP = {
 
 class SourcesIndex:
     def __init__(self, data):
-        self.word_opt = set([
+        self.word_opt = {
             'Directory',
-        ])
-        self.multiline_opt = set([
+        }
+        self.multiline_opt = {
             'Checksums-Sha1',
             'Checksums-Sha256',
             'Checksums-Sha512',
             'Files',
-        ])
+        }
 
         self.files = dict()
         self._parse(data)
