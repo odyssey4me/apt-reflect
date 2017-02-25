@@ -143,4 +143,4 @@ def check_exists(url):
 def get_session(bucket):
     session = boto3.session.Session()
     s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
-    return s3.Bucket('testing')
+    return s3.Bucket(bucket)
