@@ -19,6 +19,7 @@ def main():
     arches = ['binary-amd64', 'binary-i386']
 
     release_path = '/'.join([base, 'dists', codename, 'Release'])
+    release = None
     if utils.check_exists(release_path):
         release = release_index.ReleaseIndex(release_path, base, codename)
         packages_indices = release.get_packages_indices(
@@ -44,9 +45,10 @@ def main():
             q.put((release, filename, info, False))
         q.join()
 
-    #for filename, info in release.get_indices(**kwargs).items():
-    #    q.put((release, filename, info, True))
-    #q.join()
+    if release:
+        for filename, info in release.get_indices(components=comps, architectures=arches).items():
+            q.put((release, filename, info, True))
+        q.join()
 
 def do_work(work_queue):
     bucket = utils.get_session('testing')
