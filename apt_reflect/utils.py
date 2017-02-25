@@ -94,16 +94,7 @@ def verify_data(info, data):
             LOG.error('Unknown verification data key "{}"'.format(k))
 
 
-def download_package(release, filename, info, bucket, can_be_missing=False):
-    try:
-        meta = bucket.Object(filename).content_length
-    except botocore.exceptions.ClientError:
-        meta = None
-
-    if meta and meta == info['size']:
-        LOG.info('Already downloaded {}, Skipping'.format(filename))
-        return
-
+def download_package(release, filename, info, can_be_missing=False):
     data = fetch('/'.join([release.url, filename]), can_be_missing)
     if not data:
         return

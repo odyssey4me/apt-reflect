@@ -37,9 +37,16 @@ def main():
         t = threading.Thread(target=do_work, args=(q,))
         t.daemon = True
         t.start()
+
+    session = boto3.session.Session()
+    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
+    bucket = s3.Bucket('testing')
+    items = set([x.key for x in bucket.objects.all()])
     for path in packages_indices:
         packages = packages_index.PackagesIndex('/'.join([base, path]))
         for filename, info in packages.files.items():
+            if filename in items:
+                continue
             q.put((release, filename, info, False))
         q.join()
 
@@ -54,7 +61,7 @@ def do_work(work_queue):
     while True:
         queue_item = work_queue.get()
         release, filename, info, can_be_missing = queue_item
-        data = utils.download_package(release, filename, info, bucket, can_be_missing)
+        data = utils.download_package(release, filename, info, can_be_missing)
         if not data:
             work_queue.task_done()
             continue
