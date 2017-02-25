@@ -31,7 +31,6 @@ def main():
         packages_indices = utils.find_packages_indices(base, codename,
             comps, arches)
 
-
     threads = 20
     q = queue.Queue(threads * 2)
     for i in range(threads):
@@ -49,15 +48,17 @@ def main():
     #q.join()
 
 def do_work(work_queue):
-    s3_client = boto3.client('s3', endpoint_url='http://10.10.1.1:7480')
+    session = boto3.session.Session()
+    s3 = session.resource('s3', endpoint_url='http://10.10.1.1:7480')
+    bucket = s3.Bucket('testing')
     while True:
         queue_item = work_queue.get()
         release, filename, info, can_be_missing = queue_item
-        data = utils.download_package(release, filename, info, s3_client, can_be_missing)
+        data = utils.download_package(release, filename, info, bucket, can_be_missing)
         if not data:
             work_queue.task_done()
             continue
-        utils.upload_package(s3_client, filename, data, info)
+        utils.upload_package(bucket, filename, data, info)
         work_queue.task_done()
 
 if __name__ == '__main__':

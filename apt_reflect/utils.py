@@ -94,16 +94,13 @@ def verify_data(info, data):
             LOG.error('Unknown verification data key "{}"'.format(k))
 
 
-def download_package(release, filename, info, client, can_be_missing=False):
+def download_package(release, filename, info, bucket, can_be_missing=False):
     try:
-        meta = client.head_object(Bucket='testing', Key=filename)
+        meta = bucket.Object(filename).content_length
     except botocore.exceptions.ClientError:
         meta = None
 
-    if \
-        meta and \
-        meta['ContentLength'] == info['size'] and \
-        meta['ETag'][1:-1] == info['md5']:
+    if meta and meta == info['size']:
         LOG.info('Already downloaded {}, Skipping'.format(filename))
         return
 
@@ -114,16 +111,14 @@ def download_package(release, filename, info, client, can_be_missing=False):
     return data
 
 
-def upload_package(client, key, data, info):
+def upload_package(bucket, key, data, info):
     md5_hex = binascii.a2b_hex(info['md5'])
     LOG.debug('Pushing {}'.format(key))
-    client.put_object(
+    bucket.Object(key).put(
         ACL='public-read',
         Body=data,
-        Bucket='testing',
         ContentLength=info['size'],
         ContentMD5=base64.b64encode(md5_hex).decode('utf-8'),
-        Key=key,
     )
 
 
