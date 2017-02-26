@@ -37,18 +37,24 @@ def main():
 
     bucket = utils.get_session('testing')
     items = {x.key for x in bucket.objects.all()}
+
     for path in packages_indices:
         packages = packages_index.PackagesIndex('/'.join([base, path]))
-        for filename, info in packages.files.items():
-            if filename in items:
+        for k, v in sorted(
+            packages.files.items(),
+            key=lambda x: x[1]['size'],
+            reverse=True
+        ):
+            if k in items:
                 continue
-            q.put((release, filename, info, False))
+            q.put((release, k, v, False))
         q.join()
 
     if release:
         for filename, info in release.get_indices(components=comps, architectures=arches).items():
             q.put((release, filename, info, True))
         q.join()
+
 
 def do_work(work_queue):
     bucket = utils.get_session('testing')
