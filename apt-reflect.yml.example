@@ -1,0 +1,31 @@
+##### NOT USED YET #####
+
+globals:
+  architectures:
+    - binary-amd64
+    - binary-i386
+  components:
+    - main
+    - contrib
+    - non-free
+
+repositories:
+  debian:
+    url: http://deb.debian.org/debian
+    release: jessie
+  debian-updates:
+    url: http://deb.debian.org/debian
+    release: jessie-updates
+  debian-security:
+    url: http://security.debian.org
+    release: jessie/updates
+  ubuntu:
+    url: http://us.archive.ubuntu.com/ubuntu
+    release: yakkety
+    components:
+      - main
+      - restricted
+      - universe
+      - multiverse
+    architectures:
+      - binary-amd64
